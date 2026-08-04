@@ -116,6 +116,24 @@ function movePacman( game ) {
   wrapTunnel( p, width );
 }
 
+// Elige la direccion (entre choices) que minimice la distancia Manhattan
+// desde la siguiente celda del fantasma al objetivo (tx, ty).
+function greedyTowards( g, choices, tx, ty ) {
+  let best = choices[ 0 ];
+  let bestDist = Infinity;
+  for ( const dir of choices ) {
+    const d = DIRS[ dir ];
+    const nx = g.x + d.x;
+    const ny = g.y + d.y;
+    const dist = Math.abs( nx - tx ) + Math.abs( ny - ty );
+    if ( dist < bestDist ) {
+      bestDist = dist;
+      best = dir;
+    }
+  }
+  g.dir = best;
+}
+
 function decideGhost( game, g ) {
   const grid = game.grid;
   const p = game.pacman;
@@ -130,26 +148,33 @@ function decideGhost( game, g ) {
     case 'clyde':
       g.dir = choices[ Math.floor( Math.random() * choices.length ) ];
       return;
-    case 'pinky':
-    case 'inky':
-      // Placeholder: misma logica agresiva de blinky; paso 2 los sustituye.
+    case 'pinky': {
+      // Emboscada: 4 celdas por delante de pacman en su direccion actual.
+      const pd = DIRS[ p.dir ] || { x: 0, y: 0 };
+      const tx = Math.round( p.x ) + 4 * pd.x;
+      const ty = Math.round( p.y ) + 4 * pd.y;
+      greedyTowards( g, choices, tx, ty );
+      return;
+    }
+    case 'inky': {
+      // Vector blinky->(pacman+2) duplicado, suma a blinky. Si blinky no
+      // existiera (edge case), cae al propio g como fallback.
+      const pd = DIRS[ p.dir ] || { x: 0, y: 0 };
+      const t1x = Math.round( p.x ) + 2 * pd.x;
+      const t1y = Math.round( p.y ) + 2 * pd.y;
+      const blinky = game.ghosts.find( ( o ) => o.kind === 'blinky' ) || g;
+      const bx = Math.round( blinky.x );
+      const by = Math.round( blinky.y );
+      const tx = bx + 2 * ( t1x - bx );
+      const ty = by + 2 * ( t1y - by );
+      greedyTowards( g, choices, tx, ty );
+      return;
+    }
     case 'blinky':
     default: {
       const px = Math.round( p.x );
       const py = Math.round( p.y );
-      let best = choices[ 0 ];
-      let bestDist = Infinity;
-      for ( const dir of choices ) {
-        const d = DIRS[ dir ];
-        const nx = g.x + d.x;
-        const ny = g.y + d.y;
-        const dist = Math.abs( nx - px ) + Math.abs( ny - py );
-        if ( dist < bestDist ) {
-          bestDist = dist;
-          best = dir;
-        }
-      }
-      g.dir = best;
+      greedyTowards( g, choices, px, py );
       return;
     }
   }
