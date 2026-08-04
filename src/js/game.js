@@ -200,6 +200,31 @@ function bobStep( g ) {
   }
 }
 
+// Rutina guionizada de salida de la pen (SPEC 02). Guia a un fantasma ya
+// liberado (released && !exited) desde su inicio en la pen hasta el tile fijo
+// PEN_EXIT = (13, 11) encima de la puerta. Pasos:
+//   1. Si no esta alineado en x=13, moverse horizontalmente hacia la col 13.
+//   2. Si ya esta en x=13 pero y > 11, subir recto por la puerta (value 3).
+//   3. Al alcanzar (13, 11), fijar la posicion y marcar exited = true; a partir
+//      de aqui moveGhost cede el control a decideGhost (IA de personalidad).
+// Esta rutina no pasa por decideGhost, asi que puede cruzar la puerta y puede
+// invertir la direccion para alinearse (excepcion intencional a la no-reversa).
+function exitStep( g ) {
+  const gx = Math.round( g.x );
+  const gy = Math.round( g.y );
+  if ( gx !== PEN_EXIT.x ) {
+    g.dir = g.x < PEN_EXIT.x ? 'right' : 'left';
+  } else if ( gy > PEN_EXIT.y ) {
+    g.dir = 'up';
+  } else {
+    // Alcanzado el tile de salida: anclaje y cede el control al IA.
+    g.x = PEN_EXIT.x;
+    g.y = PEN_EXIT.y;
+    g.exited = true;
+    return;
+  }
+}
+
 function moveGhost( game, g ) {
   const grid = game.grid;
   const width = grid[ 0 ].length;
@@ -213,8 +238,16 @@ function moveGhost( game, g ) {
   if ( aligned( g.x ) && aligned( g.y ) ) {
     g.x = Math.round( g.x );
     g.y = Math.round( g.y );
-    decideGhost( game, g );
-    if ( !canMove( grid, g.x, g.y, g.dir, 'ghost' ) ) return;
+    // Liberado pero aun dentro de la pen: rutina guionizada hacia PEN_EXIT
+    // (puede cruzar la puerta y alinearse a col 13). Ya afuera: IA normal.
+    if ( !g.exited ) {
+      exitStep( g );
+      if ( g.exited ) return; // acabo de llegar a PEN_EXIT; cede al IA en el frame siguiente
+      if ( !canMove( grid, g.x, g.y, g.dir, 'ghost' ) ) return;
+    } else {
+      decideGhost( game, g );
+      if ( !canMove( grid, g.x, g.y, g.dir, 'ghost' ) ) return;
+    }
   }
 
   const d = DIRS[ g.dir ];
