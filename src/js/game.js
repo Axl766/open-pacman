@@ -142,9 +142,18 @@ function decideGhost( game, g ) {
   const grid = game.grid;
   const p = game.pacman;
 
-  const options = Object.keys( DIRS ).filter(
-    ( dir ) => dir !== OPPOSITE[ g.dir ] && canMove( grid, g.x, g.y, dir, 'ghost' )
-  );
+  const options = Object.keys( DIRS ).filter( ( dir ) => {
+    if ( dir === OPPOSITE[ g.dir ] ) return false;
+    if ( !canMove( grid, g.x, g.y, dir, 'ghost' ) ) return false;
+    // Puerta unidireccional (SPEC 02): un fantasma ya afuera (exited) nunca
+    // pisa la puerta (value 3), evitando reentrar a la pen. La rutina
+    // exitStep no pasa por aqui, asi que sigue cruzando la puerta al subir.
+    if ( g.exited ) {
+      const d = DIRS[ dir ];
+      if ( grid[ g.y + d.y ][ g.x + d.x ] === 3 ) return false;
+    }
+    return true;
+  } );
   // Sin salida (callejon): permitir el giro de 180.
   const choices = options.length ? options : [ '' + OPPOSITE[ g.dir ] ];
 
