@@ -272,12 +272,15 @@ function resetPositions( game ) {
   p.dir = 'left';
   p.nextDir = null;
   // Preservar released y threshold: quien ya salio no se re-bloquea; los
-  // bloqueados siguen esperando su umbral de dots.
+  // bloqueados siguen esperando su umbral de dots comidos.
   game.ghosts.forEach( ( g, i ) => {
     g.x = GHOST_STARTS[ i ].x;
     g.y = GHOST_STARTS[ i ].y;
     g.dir = 'up';
     g.bobDir = 'up';
+    // Reiniciar el flag de salida: tras perder una vida, los liberados deben
+    // volver a salir de la pen. No se toca released/threshold (SPEC 01).
+    g.exited = false;
   } );
 }
 
