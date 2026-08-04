@@ -47,6 +47,10 @@ function createGame() {
       released: ( GHOST_RELEASE_DOTS[ g.kind ] || 0 ) === 0,
       threshold: GHOST_RELEASE_DOTS[ g.kind ] || 0,
       bobDir: 'up',
+      // Flag "ya salio de la pen": false mientras el fantasma liberado aun no
+      // alcanza PEN_EXIT. Incluso blinky (released=true) arranca exited=false
+      // hasta que termine de salir. Se consume en moveGhost (SPEC 02).
+      exited: false,
     } ) ),
   };
 }
