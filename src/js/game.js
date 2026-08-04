@@ -28,6 +28,7 @@ function createGame() {
     score: 0,
     lives: 3,
     dotsRemaining: dots,
+    dotsEaten: 0,
     grid,
     pacman: {
       x: PACMAN_START.x,
@@ -42,6 +43,10 @@ function createGame() {
       dir: 'up',
       speed: GHOST_SPEED,
       kind: g.kind,
+      // Solo blinky (threshold 0) arranca libre; los demas esperan su umbral.
+      released: ( GHOST_RELEASE_DOTS[ g.kind ] || 0 ) === 0,
+      threshold: GHOST_RELEASE_DOTS[ g.kind ] || 0,
+      bobDir: 'up',
     } ) ),
   };
 }
@@ -99,6 +104,7 @@ function movePacman( game ) {
       grid[ p.y ][ p.x ] = 0;
       game.score += 10;
       game.dotsRemaining--;
+      game.dotsEaten++;
     }
     // Si no puede seguir, se detiene en la celda.
     if ( !canMove( grid, p.x, p.y, p.dir, 'pacman' ) ) return;
@@ -108,6 +114,24 @@ function movePacman( game ) {
   p.x += d.x * p.speed;
   p.y += d.y * p.speed;
   wrapTunnel( p, width );
+}
+
+// Elige la direccion (entre choices) que minimice la distancia Manhattan
+// desde la siguiente celda del fantasma al objetivo (tx, ty).
+function greedyTowards( g, choices, tx, ty ) {
+  let best = choices[ 0 ];
+  let bestDist = Infinity;
+  for ( const dir of choices ) {
+    const d = DIRS[ dir ];
+    const nx = g.x + d.x;
+    const ny = g.y + d.y;
+    const dist = Math.abs( nx - tx ) + Math.abs( ny - ty );
+    if ( dist < bestDist ) {
+      bestDist = dist;
+      best = dir;
+    }
+  }
+  g.dir = best;
 }
 
 function decideGhost( game, g ) {
@@ -120,30 +144,67 @@ function decideGhost( game, g ) {
   // Sin salida (callejon): permitir el giro de 180.
   const choices = options.length ? options : [ '' + OPPOSITE[ g.dir ] ];
 
-  if ( g.kind === 'hunter' ) {
-    const px = Math.round( p.x );
-    const py = Math.round( p.y );
-    let best = choices[ 0 ];
-    let bestDist = Infinity;
-    for ( const dir of choices ) {
-      const d = DIRS[ dir ];
-      const nx = g.x + d.x;
-      const ny = g.y + d.y;
-      const dist = Math.abs( nx - px ) + Math.abs( ny - py );
-      if ( dist < bestDist ) {
-        bestDist = dist;
-        best = dir;
-      }
+  switch ( g.kind ) {
+    case 'clyde':
+      g.dir = choices[ Math.floor( Math.random() * choices.length ) ];
+      return;
+    case 'pinky': {
+      // Emboscada: 4 celdas por delante de pacman en su direccion actual.
+      const pd = DIRS[ p.dir ] || { x: 0, y: 0 };
+      const tx = Math.round( p.x ) + 4 * pd.x;
+      const ty = Math.round( p.y ) + 4 * pd.y;
+      greedyTowards( g, choices, tx, ty );
+      return;
     }
-    g.dir = best;
-  } else {
-    g.dir = choices[ Math.floor( Math.random() * choices.length ) ];
+    case 'inky': {
+      // Vector blinky->(pacman+2) duplicado, suma a blinky. Si blinky no
+      // existiera (edge case), cae al propio g como fallback.
+      const pd = DIRS[ p.dir ] || { x: 0, y: 0 };
+      const t1x = Math.round( p.x ) + 2 * pd.x;
+      const t1y = Math.round( p.y ) + 2 * pd.y;
+      const blinky = game.ghosts.find( ( o ) => o.kind === 'blinky' ) || g;
+      const bx = Math.round( blinky.x );
+      const by = Math.round( blinky.y );
+      const tx = bx + 2 * ( t1x - bx );
+      const ty = by + 2 * ( t1y - by );
+      greedyTowards( g, choices, tx, ty );
+      return;
+    }
+    case 'blinky':
+    default: {
+      const px = Math.round( p.x );
+      const py = Math.round( p.y );
+      greedyTowards( g, choices, px, py );
+      return;
+    }
+  }
+}
+
+// Bobbing vertical dentro de la pen: oscila g.y entre PEN_TOP y PEN_BOTTOM
+// con g.speed, invirtiendo g.bobDir en los limites. No aplica wrapTunnel: la
+// fila 14 es TUNNEL_ROW, pero wrapTunnel solo actua en x < 0 o x >= width, y
+// los fantasmas bloqueados estan en cols 12-15 (no tocan el borde x).
+function bobStep( g ) {
+  const d = DIRS[ g.bobDir ];
+  g.y += d.y * g.speed;
+  if ( g.y <= PEN_TOP && g.bobDir === 'up' ) {
+    g.y = PEN_TOP;
+    g.bobDir = 'down';
+  } else if ( g.y >= PEN_BOTTOM && g.bobDir === 'down' ) {
+    g.y = PEN_BOTTOM;
+    g.bobDir = 'up';
   }
 }
 
 function moveGhost( game, g ) {
   const grid = game.grid;
   const width = grid[ 0 ].length;
+
+  // Fantasma bloqueado: solo flota en la pen, no decide direccion.
+  if ( !g.released ) {
+    bobStep( g );
+    return;
+  }
 
   if ( aligned( g.x ) && aligned( g.y ) ) {
     g.x = Math.round( g.x );
@@ -164,10 +225,13 @@ function resetPositions( game ) {
   p.y = PACMAN_START.y;
   p.dir = 'left';
   p.nextDir = null;
+  // Preservar released y threshold: quien ya salio no se re-bloquea; los
+  // bloqueados siguen esperando su umbral de dots.
   game.ghosts.forEach( ( g, i ) => {
     g.x = GHOST_STARTS[ i ].x;
     g.y = GHOST_STARTS[ i ].y;
     g.dir = 'up';
+    g.bobDir = 'up';
   } );
 }
 
@@ -177,6 +241,13 @@ function collides( a, b ) {
 
 function update( game ) {
   movePacman( game );
+
+  // Liberacion escalonada: antes de mover, desbloquear a quien ya alcanzo su
+  // umbral de dots comidos.
+  for ( const g of game.ghosts ) {
+    if ( !g.released && game.dotsEaten >= g.threshold ) g.released = true;
+  }
+
   game.ghosts.forEach( ( g ) => moveGhost( game, g ) );
 
   for ( const g of game.ghosts ) {
