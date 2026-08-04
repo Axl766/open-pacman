@@ -28,6 +28,7 @@ function createGame() {
     score: 0,
     lives: 3,
     dotsRemaining: dots,
+    dotsEaten: 0,
     grid,
     pacman: {
       x: PACMAN_START.x,
@@ -42,6 +43,11 @@ function createGame() {
       dir: 'up',
       speed: GHOST_SPEED,
       kind: g.kind,
+      // Paso 1: todos liberados para no romper el juego; el paso 3 activa
+      // la liberacion escalonada por dots.
+      released: true,
+      threshold: GHOST_RELEASE_DOTS[ g.kind ] || 0,
+      bobDir: 'up',
     } ) ),
   };
 }
@@ -120,24 +126,32 @@ function decideGhost( game, g ) {
   // Sin salida (callejon): permitir el giro de 180.
   const choices = options.length ? options : [ '' + OPPOSITE[ g.dir ] ];
 
-  if ( g.kind === 'hunter' ) {
-    const px = Math.round( p.x );
-    const py = Math.round( p.y );
-    let best = choices[ 0 ];
-    let bestDist = Infinity;
-    for ( const dir of choices ) {
-      const d = DIRS[ dir ];
-      const nx = g.x + d.x;
-      const ny = g.y + d.y;
-      const dist = Math.abs( nx - px ) + Math.abs( ny - py );
-      if ( dist < bestDist ) {
-        bestDist = dist;
-        best = dir;
+  switch ( g.kind ) {
+    case 'clyde':
+      g.dir = choices[ Math.floor( Math.random() * choices.length ) ];
+      return;
+    case 'pinky':
+    case 'inky':
+      // Placeholder: misma logica agresiva de blinky; paso 2 los sustituye.
+    case 'blinky':
+    default: {
+      const px = Math.round( p.x );
+      const py = Math.round( p.y );
+      let best = choices[ 0 ];
+      let bestDist = Infinity;
+      for ( const dir of choices ) {
+        const d = DIRS[ dir ];
+        const nx = g.x + d.x;
+        const ny = g.y + d.y;
+        const dist = Math.abs( nx - px ) + Math.abs( ny - py );
+        if ( dist < bestDist ) {
+          bestDist = dist;
+          best = dir;
+        }
       }
+      g.dir = best;
+      return;
     }
-    g.dir = best;
-  } else {
-    g.dir = choices[ Math.floor( Math.random() * choices.length ) ];
   }
 }
 

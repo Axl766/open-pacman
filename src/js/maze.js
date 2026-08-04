@@ -51,12 +51,27 @@ const MAZE = MAZE_STR.map( ( row ) => row.split( '' ).map( parseTile ) );
 
 const TUNNEL_ROW = 14;
 const PACMAN_START = { x: 13, y: 23 };
+
+// 4 fantasmas arcade, cada uno en una columna distinta (12-15) de la fila 14
+// para evitar solapamiento visual durante el bobbing.
 const GHOST_STARTS = [
-  { x: 13, y: 14, kind: 'hunter' }, // dentro de la pen
-  { x: 14, y: 14, kind: 'random' }, // dentro de la pen
+  { x: 13, y: 14, kind: 'blinky' }, // rojo
+  { x: 14, y: 14, kind: 'pinky' },  // rosa
+  { x: 12, y: 14, kind: 'inky' },   // cian
+  { x: 15, y: 14, kind: 'clyde' },  // naranja
 ];
+
+// Dots que pacman debe comer antes de liberar a cada fantasma.
+const GHOST_RELEASE_DOTS = { blinky: 0, pinky: 5, inky: 20, clyde: 40 };
+
+// Rango vertical del bobbing dentro de la pen.
+const PEN_TOP = 13;
+const PEN_BOTTOM = 15;
 
 window.MAZE = MAZE;
 window.TUNNEL_ROW = TUNNEL_ROW;
 window.PACMAN_START = PACMAN_START;
 window.GHOST_STARTS = GHOST_STARTS;
+window.GHOST_RELEASE_DOTS = GHOST_RELEASE_DOTS;
+window.PEN_TOP = PEN_TOP;
+window.PEN_BOTTOM = PEN_BOTTOM;
