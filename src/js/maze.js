@@ -68,6 +68,11 @@ const GHOST_RELEASE_DOTS = { blinky: 0, pinky: 5, inky: 20, clyde: 40 };
 const PEN_TOP = 13;
 const PEN_BOTTOM = 15;
 
+// Tile fijo de salida encima de la puerta (fila 12, cols 13-14). Por el
+// convergen los 4 fantasmas al liberarse (estilo arcade). Las cols 13-14 son
+// la puerta (value 3); (13, 11) es la primera celda transitable encima.
+const PEN_EXIT = { x: 13, y: 11 };
+
 window.MAZE = MAZE;
 window.TUNNEL_ROW = TUNNEL_ROW;
 window.PACMAN_START = PACMAN_START;
@@ -75,3 +80,4 @@ window.GHOST_STARTS = GHOST_STARTS;
 window.GHOST_RELEASE_DOTS = GHOST_RELEASE_DOTS;
 window.PEN_TOP = PEN_TOP;
 window.PEN_BOTTOM = PEN_BOTTOM;
+window.PEN_EXIT = PEN_EXIT;
