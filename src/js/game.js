@@ -43,9 +43,8 @@ function createGame() {
       dir: 'up',
       speed: GHOST_SPEED,
       kind: g.kind,
-      // Paso 1: todos liberados para no romper el juego; el paso 3 activa
-      // la liberacion escalonada por dots.
-      released: true,
+      // Solo blinky (threshold 0) arranca libre; los demas esperan su umbral.
+      released: ( GHOST_RELEASE_DOTS[ g.kind ] || 0 ) === 0,
       threshold: GHOST_RELEASE_DOTS[ g.kind ] || 0,
       bobDir: 'up',
     } ) ),
@@ -105,6 +104,7 @@ function movePacman( game ) {
       grid[ p.y ][ p.x ] = 0;
       game.score += 10;
       game.dotsRemaining--;
+      game.dotsEaten++;
     }
     // Si no puede seguir, se detiene en la celda.
     if ( !canMove( grid, p.x, p.y, p.dir, 'pacman' ) ) return;
@@ -180,9 +180,31 @@ function decideGhost( game, g ) {
   }
 }
 
+// Bobbing vertical dentro de la pen: oscila g.y entre PEN_TOP y PEN_BOTTOM
+// con g.speed, invirtiendo g.bobDir en los limites. No aplica wrapTunnel: la
+// fila 14 es TUNNEL_ROW, pero wrapTunnel solo actua en x < 0 o x >= width, y
+// los fantasmas bloqueados estan en cols 12-15 (no tocan el borde x).
+function bobStep( g ) {
+  const d = DIRS[ g.bobDir ];
+  g.y += d.y * g.speed;
+  if ( g.y <= PEN_TOP && g.bobDir === 'up' ) {
+    g.y = PEN_TOP;
+    g.bobDir = 'down';
+  } else if ( g.y >= PEN_BOTTOM && g.bobDir === 'down' ) {
+    g.y = PEN_BOTTOM;
+    g.bobDir = 'up';
+  }
+}
+
 function moveGhost( game, g ) {
   const grid = game.grid;
   const width = grid[ 0 ].length;
+
+  // Fantasma bloqueado: solo flota en la pen, no decide direccion.
+  if ( !g.released ) {
+    bobStep( g );
+    return;
+  }
 
   if ( aligned( g.x ) && aligned( g.y ) ) {
     g.x = Math.round( g.x );
@@ -203,10 +225,13 @@ function resetPositions( game ) {
   p.y = PACMAN_START.y;
   p.dir = 'left';
   p.nextDir = null;
+  // Preservar released y threshold: quien ya salio no se re-bloquea; los
+  // bloqueados siguen esperando su umbral de dots.
   game.ghosts.forEach( ( g, i ) => {
     g.x = GHOST_STARTS[ i ].x;
     g.y = GHOST_STARTS[ i ].y;
     g.dir = 'up';
+    g.bobDir = 'up';
   } );
 }
 
@@ -216,6 +241,13 @@ function collides( a, b ) {
 
 function update( game ) {
   movePacman( game );
+
+  // Liberacion escalonada: antes de mover, desbloquear a quien ya alcanzo su
+  // umbral de dots comidos.
+  for ( const g of game.ghosts ) {
+    if ( !g.released && game.dotsEaten >= g.threshold ) g.released = true;
+  }
+
   game.ghosts.forEach( ( g ) => moveGhost( game, g ) );
 
   for ( const g of game.ghosts ) {
