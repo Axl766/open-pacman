@@ -130,6 +130,12 @@ function movePacman( game ) {
       game.dotsEaten++;
       game.frightTimer = FRIGHT_FRAMES;
       game.frightChain = 0;
+      // Reversion inmediata arcade: solo los fantasmas ya afuera en el mapa
+      // (exited y no eyes) invierten su direccion. Los que estan en la pen
+      // o son ojos no se tocan.
+      for ( const g of game.ghosts ) {
+        if ( g.exited && !g.eaten ) g.dir = OPPOSITE[ g.dir ];
+      }
     }
     // Si no puede seguir, se detiene en la celda.
     if ( !canMove( grid, p.x, p.y, p.dir, 'pacman' ) ) return;
@@ -159,6 +165,24 @@ function greedyTowards( g, choices, tx, ty ) {
   g.dir = best;
 }
 
+// Variante de huida (SPEC 03): maximiza la distancia Manhattan a pacman.
+// Misma logica que greedyTowards pero con `>` en vez de `<`.
+function greedyAway( g, choices, tx, ty ) {
+  let best = choices[ 0 ];
+  let bestDist = -1;
+  for ( const dir of choices ) {
+    const d = DIRS[ dir ];
+    const nx = g.x + d.x;
+    const ny = g.y + d.y;
+    const dist = Math.abs( nx - tx ) + Math.abs( ny - ty );
+    if ( dist > bestDist ) {
+      bestDist = dist;
+      best = dir;
+    }
+  }
+  g.dir = best;
+}
+
 function decideGhost( game, g ) {
   const grid = game.grid;
   const p = game.pacman;
@@ -177,6 +201,16 @@ function decideGhost( game, g ) {
   } );
   // Sin salida (callejon): permitir el giro de 180.
   const choices = options.length ? options : [ '' + OPPOSITE[ g.dir ] ];
+
+  // Modo asustado (SPEC 03): TODOS los fantasmas huyen de pacman con greedyAway
+  // (mismo para clyde, que pierde su aleatoriedad durante fright — coherente
+  // con el arcade, donde ningun fantasma es aleatorio en modo asustado).
+  if ( game.frightTimer > 0 && !g.eaten ) {
+    const px = Math.round( p.x );
+    const py = Math.round( p.y );
+    greedyAway( g, choices, px, py );
+    return;
+  }
 
   switch ( g.kind ) {
     case 'clyde':
