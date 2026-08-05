@@ -113,26 +113,7 @@ function drawPacman( ctx, p, frame ) {
   ctx.fill();
 }
 
-function drawGhost( ctx, g, color ) {
-  const { cx, cy } = cellCenter( g.x, g.y );
-  const r = TILE / 2 - 1;
-  const top = cy - r;
-  const bottom = cy + r;
-  const left = cx - r;
-  const right = cx + r;
-
-  ctx.fillStyle = color;
-  ctx.beginPath();
-  ctx.arc( cx, cy - 1, r, Math.PI, 0, false ); // cabeza
-  ctx.lineTo( right, bottom );
-  // falda ondulada (3 picos)
-  ctx.lineTo( right - r * 0.66, bottom - 4 );
-  ctx.lineTo( cx, bottom );
-  ctx.lineTo( left + r * 0.66, bottom - 4 );
-  ctx.lineTo( left, bottom );
-  ctx.closePath();
-  ctx.fill();
-
+function drawEyes( ctx, g, cx, cy ) {
   // ojos mirando segun direccion
   const dir = DIRS[ g.dir ] || { x: 0, y: 0 };
   const ex = dir.x * 1.6;
@@ -147,6 +128,31 @@ function drawGhost( ctx, g, color ) {
     ctx.arc( cx + off + ex, cy - 1 + ey, 1.5, 0, Math.PI * 2 );
     ctx.fill();
   }
+}
+
+function drawGhost( ctx, g, color, drawBody = true ) {
+  const { cx, cy } = cellCenter( g.x, g.y );
+  const r = TILE / 2 - 1;
+  const top = cy - r;
+  const bottom = cy + r;
+  const left = cx - r;
+  const right = cx + r;
+
+  if ( drawBody ) {
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.arc( cx, cy - 1, r, Math.PI, 0, false ); // cabeza
+    ctx.lineTo( right, bottom );
+    // falda ondulada (3 picos)
+    ctx.lineTo( right - r * 0.66, bottom - 4 );
+    ctx.lineTo( cx, bottom );
+    ctx.lineTo( left + r * 0.66, bottom - 4 );
+    ctx.lineTo( left, bottom );
+    ctx.closePath();
+    ctx.fill();
+  }
+
+  drawEyes( ctx, g, cx, cy );
 }
 
 function drawHUD( ctx, game, W ) {
@@ -175,7 +181,27 @@ function draw( ctx, game, frame ) {
   drawDots( ctx, grid );
   drawPowerPellets( ctx, grid, frame );
   drawPacman( ctx, game.pacman, frame );
-  game.ghosts.forEach( ( g, i ) => drawGhost( ctx, g, GHOST_COLORS[ i ] || '#ff0000' ) );
+  game.ghosts.forEach( ( g, i ) => {
+    // Estado de cada fantasma para el render (SPEC 03):
+    //   - ojos (eaten): solo los ojos, sin cuerpo.
+    //   - asustado (frightTimer > 0 y no ojos): cuerpo azul `#2121ff`
+    //     parpadeando a blanco en los ultimos ~120 frames.
+    //   - normal: color arcade del fantasma.
+    if ( g.eaten ) {
+      drawGhost( ctx, g, '', false );
+      return;
+    }
+    if ( game.frightTimer > 0 ) {
+      // FRIGHT_BLINK_FRAMES = 120 (valor espejo de game.js, no expuesto en
+      // window porque es puramente un detalle de render).
+      const blinking = game.frightTimer <= 120;
+      const blinkOn = frame % 16 < 8;
+      const color = blinking && blinkOn ? '#ffffff' : '#2121ff';
+      drawGhost( ctx, g, color, true );
+      return;
+    }
+    drawGhost( ctx, g, GHOST_COLORS[ i ] || '#ff0000', true );
+  } );
   drawHUD( ctx, game, W );
 }
 
