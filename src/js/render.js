@@ -79,6 +79,21 @@ function drawDots( ctx, grid ) {
   }
 }
 
+// Power pellets (tile 4): circulo blanco grande pulsante en las 4 esquinas.
+function drawPowerPellets( ctx, grid, frame ) {
+  ctx.fillStyle = '#ffffff';
+  const r = Math.sin( frame * 0.2 ) * 1.5 + 5; // pulso ~5..6.5
+  for ( let y = 0; y < grid.length; y++ ) {
+    for ( let x = 0; x < grid[ 0 ].length; x++ ) {
+      if ( grid[ y ][ x ] !== 4 ) continue;
+      const { cx, cy } = cellCenter( x, y );
+      ctx.beginPath();
+      ctx.arc( cx, cy, r, 0, Math.PI * 2 );
+      ctx.fill();
+    }
+  }
+}
+
 function drawPacman( ctx, p, frame ) {
   const { cx, cy } = cellCenter( p.x, p.y );
   let rot = 0;
@@ -158,6 +173,7 @@ function draw( ctx, game, frame ) {
   drawWalls( ctx, grid );
   drawDoor( ctx, grid );
   drawDots( ctx, grid );
+  drawPowerPellets( ctx, grid, frame );
   drawPacman( ctx, game.pacman, frame );
   game.ghosts.forEach( ( g, i ) => drawGhost( ctx, g, GHOST_COLORS[ i ] || '#ff0000' ) );
   drawHUD( ctx, game, W );

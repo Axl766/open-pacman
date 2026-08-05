@@ -1,6 +1,6 @@
 # SPEC 01 — IA de los 4 fantasmas
 
-**Estado:** Approved
+**Estado:** Implemented
 **Depende de:** —
 **Fecha:** 2026-08-04
 **Objetivo (una frase):** Añadir 4 fantasmas con personalidades de IA distintas
