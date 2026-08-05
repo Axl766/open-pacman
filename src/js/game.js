@@ -367,6 +367,11 @@ function resetPositions( game ) {
   p.y = PACMAN_START.y;
   p.dir = 'left';
   p.nextDir = null;
+  // Apagar el modo asustado global (SPEC 03): timer y cadena a 0 para evitar
+  // estados extraños tras perder una vida. Los ojos en vuelo vuelven a ser
+  // fantasma normal en su GHOST_START (se reinicia `eaten`).
+  game.frightTimer = 0;
+  game.frightChain = 0;
   // Preservar released y threshold: quien ya salio no se re-bloquea; los
   // bloqueados siguen esperando su umbral de dots comidos.
   game.ghosts.forEach( ( g, i ) => {
@@ -377,6 +382,9 @@ function resetPositions( game ) {
     // Reiniciar el flag de salida: tras perder una vida, los liberados deben
     // volver a salir de la pen. No se toca released/threshold (SPEC 01).
     g.exited = false;
+    // Reiniciar ojos (SPEC 03): un fantasma que estaba volviendo a la pen
+    // vuelve a aparecer entero en su GHOST_START.
+    g.eaten = false;
   } );
 }
 
