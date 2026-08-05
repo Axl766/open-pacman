@@ -13,6 +13,12 @@ const OPPOSITE = { left: 'right', right: 'left', up: 'down', down: 'up' };
 const PACMAN_SPEED = 0.125; // 1/8 celda/frame -> alinea cada 8 frames
 const GHOST_SPEED = 0.1;    // 1/10 celda/frame
 
+// Power pellets / modo asustado (SPEC 03).
+const POWER_PELLET_SCORE = 50;
+const GHOST_EATEN_SCORE = [ 200, 400, 800, 1600 ]; // indexado por frightChain
+const FRIGHT_FRAMES = 420;          // ~7s a 60fps; 0 = inactivo
+const FRIGHT_BLINK_FRAMES = 120;    // ultimos ~2s parpadean en render
+
 // Crea una partida nueva. Copia MAZE (pristino) a game.grid para poder comer
 // dots sin destruir el original, y reiniciar.
 function createGame() {
@@ -21,7 +27,7 @@ function createGame() {
   grid[ PACMAN_START.y ][ PACMAN_START.x ] = 0;
 
   let dots = 0;
-  for ( const row of grid ) for ( const v of row ) if ( v === 2 ) dots++;
+  for ( const row of grid ) for ( const v of row ) if ( v === 2 || v === 4 ) dots++;
 
   return {
     state: 'start',
@@ -29,6 +35,11 @@ function createGame() {
     lives: 3,
     dotsRemaining: dots,
     dotsEaten: 0,
+    // Modo asustado global (SPEC 03): frightTimer en frames (0 = inactivo),
+    // frightChain = cuantos fantasmas se han comido en este power pellet
+    // (0..3, indexa GHOST_EATEN_SCORE). Reiniciado por cada power pellet.
+    frightTimer: 0,
+    frightChain: 0,
     grid,
     pacman: {
       x: PACMAN_START.x,
@@ -51,6 +62,9 @@ function createGame() {
       // alcanza PEN_EXIT. Incluso blinky (released=true) arranca exited=false
       // hasta que termine de salir. Se consume en moveGhost (SPEC 02).
       exited: false,
+      // Flag "es ojos volviendo a la pen" (SPEC 03). true mientras pacman lo
+      // ha comido y los ojos vuelven; moveGhost lo redirige a eyesStep.
+      eaten: false,
     } ) ),
   };
 }
@@ -110,6 +124,22 @@ function movePacman( game ) {
       game.dotsRemaining--;
       game.dotsEaten++;
     }
+    // Power pellet (SPEC 03): 50 pts, cuenta como dot, arranca modo asustado.
+    // Reinicia timer y cadena (no acumula con un fright previo activo).
+    if ( grid[ p.y ][ p.x ] === 4 ) {
+      grid[ p.y ][ p.x ] = 0;
+      game.score += POWER_PELLET_SCORE;
+      game.dotsRemaining--;
+      game.dotsEaten++;
+      game.frightTimer = FRIGHT_FRAMES;
+      game.frightChain = 0;
+      // Reversion inmediata arcade: solo los fantasmas ya afuera en el mapa
+      // (exited y no eyes) invierten su direccion. Los que estan en la pen
+      // o son ojos no se tocan.
+      for ( const g of game.ghosts ) {
+        if ( g.exited && !g.eaten ) g.dir = OPPOSITE[ g.dir ];
+      }
+    }
     // Si no puede seguir, se detiene en la celda.
     if ( !canMove( grid, p.x, p.y, p.dir, 'pacman' ) ) return;
   }
@@ -138,6 +168,24 @@ function greedyTowards( g, choices, tx, ty ) {
   g.dir = best;
 }
 
+// Variante de huida (SPEC 03): maximiza la distancia Manhattan a pacman.
+// Misma logica que greedyTowards pero con `>` en vez de `<`.
+function greedyAway( g, choices, tx, ty ) {
+  let best = choices[ 0 ];
+  let bestDist = -1;
+  for ( const dir of choices ) {
+    const d = DIRS[ dir ];
+    const nx = g.x + d.x;
+    const ny = g.y + d.y;
+    const dist = Math.abs( nx - tx ) + Math.abs( ny - ty );
+    if ( dist > bestDist ) {
+      bestDist = dist;
+      best = dir;
+    }
+  }
+  g.dir = best;
+}
+
 function decideGhost( game, g ) {
   const grid = game.grid;
   const p = game.pacman;
@@ -156,6 +204,16 @@ function decideGhost( game, g ) {
   } );
   // Sin salida (callejon): permitir el giro de 180.
   const choices = options.length ? options : [ '' + OPPOSITE[ g.dir ] ];
+
+  // Modo asustado (SPEC 03): TODOS los fantasmas huyen de pacman con greedyAway
+  // (mismo para clyde, que pierde su aleatoriedad durante fright — coherente
+  // con el arcade, donde ningun fantasma es aleatorio en modo asustado).
+  if ( game.frightTimer > 0 && !g.eaten ) {
+    const px = Math.round( p.x );
+    const py = Math.round( p.y );
+    greedyAway( g, choices, px, py );
+    return;
+  }
 
   switch ( g.kind ) {
     case 'clyde':
@@ -234,9 +292,47 @@ function exitStep( g ) {
   }
 }
 
+// Rutina guionizada de ojos volviendo a la pen (SPEC 03 Paso 5). Espejo
+// descendente de exitStep: alinea a col 13 y baja por la puerta (value 3)
+// hasta la pen. Los ojos NO pasan por decideGhost, asi que atraviesan la
+// puerta libremente (la regla unidireccional de SPEC 02 solo aplica dentro
+// de decideGhost). Al llegar a (13,14) cede a exitStep para re-salir.
+function eyesStep( g ) {
+  const gx = Math.round( g.x );
+  const gy = Math.round( g.y );
+  if ( gx !== 13 ) {
+    g.dir = g.x < 13 ? 'right' : 'left';
+  } else if ( gy < 14 ) {
+    g.dir = 'down'; // atraviesa la puerta (value 3) — intencional
+  } else {
+    // Llego a la pen: ancla, cede a exitStep, re-emerge corriendo.
+    g.x = 13;
+    g.y = 14;
+    g.eaten = false;
+    g.exited = false;
+    g.dir = 'up';
+    return;
+  }
+}
+
 function moveGhost( game, g ) {
   const grid = game.grid;
   const width = grid[ 0 ].length;
+
+  // Ojos volviendo a la pen (SPEC 03): rutina guionizada que cruza la puerta.
+  // Se ejecuta antes que cualquier otra rama (no usa decideGhost).
+  if ( g.eaten ) {
+    if ( aligned( g.x ) && aligned( g.y ) ) {
+      g.x = Math.round( g.x );
+      g.y = Math.round( g.y );
+      eyesStep( g );
+    }
+    const d = DIRS[ g.dir ] || { x: 0, y: 0 };
+    g.x += d.x * g.speed;
+    g.y += d.y * g.speed;
+    wrapTunnel( g, width );
+    return;
+  }
 
   // Fantasma bloqueado: solo flota en la pen, no decide direccion.
   if ( !g.released ) {
@@ -271,6 +367,11 @@ function resetPositions( game ) {
   p.y = PACMAN_START.y;
   p.dir = 'left';
   p.nextDir = null;
+  // Apagar el modo asustado global (SPEC 03): timer y cadena a 0 para evitar
+  // estados extraños tras perder una vida. Los ojos en vuelo vuelven a ser
+  // fantasma normal en su GHOST_START (se reinicia `eaten`).
+  game.frightTimer = 0;
+  game.frightChain = 0;
   // Preservar released y threshold: quien ya salio no se re-bloquea; los
   // bloqueados siguen esperando su umbral de dots comidos.
   game.ghosts.forEach( ( g, i ) => {
@@ -281,6 +382,9 @@ function resetPositions( game ) {
     // Reiniciar el flag de salida: tras perder una vida, los liberados deben
     // volver a salir de la pen. No se toca released/threshold (SPEC 01).
     g.exited = false;
+    // Reiniciar ojos (SPEC 03): un fantasma que estaba volviendo a la pen
+    // vuelve a aparecer entero en su GHOST_START.
+    g.eaten = false;
   } );
 }
 
@@ -297,10 +401,26 @@ function update( game ) {
     if ( !g.released && game.dotsEaten >= g.threshold ) g.released = true;
   }
 
+  // Decrementar el timer del modo asustado (SPEC 03). Cuando llega a 0,
+  // los fantasmas NO eaten vuelven a perseguir automaticamente: no hay flag
+  // que limpiar, `frightTimer === 0` es la condicion en decideGhost.
+  if ( game.frightTimer > 0 ) game.frightTimer--;
+
   game.ghosts.forEach( ( g ) => moveGhost( game, g ) );
 
   for ( const g of game.ghosts ) {
     if ( collides( game.pacman, g ) ) {
+      // Fantasma asustado y no ojos: pacman se lo come (SPEC 03). Suma puntos
+      // en cadena 200/400/800/1600, sube frightChain (clampeado a 3) y el
+      // fantasma pasa a modo ojos. NO se baja vidas ni se resetea.
+      if ( game.frightTimer > 0 && !g.eaten ) {
+        const idx = Math.min( game.frightChain, 3 );
+        game.score += GHOST_EATEN_SCORE[ idx ];
+        game.frightChain = Math.min( game.frightChain + 1, 3 );
+        g.eaten = true;
+        continue;
+      }
+      // No asustado o el fantasma ya es ojos: pacman muere (lógica original).
       game.lives--;
       if ( game.lives <= 0 ) {
         game.state = 'lost';

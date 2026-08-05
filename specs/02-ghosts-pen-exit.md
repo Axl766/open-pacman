@@ -1,6 +1,6 @@
 # SPEC 02 — Salida de los fantasmas de la pen
 
-**Estado:** Approved
+**Estado:** Implemented
 **Depende de:** SPEC 01
 **Fecha:** 2026-08-04
 **Objetivo (una frase):** Hacer que los fantasmas liberados salgan de la pen
@@ -13,7 +13,7 @@ SPEC 01 introdujo la liberación escalonada y el bobbing, pero al liberarse un
 fantasma su IA (`decideGhost`) apunta con heurística Manhattan hacia pacman,
 que arranca en `(13, 23)`, **debajo** de la pen. La única salida de la pen es
 la puerta en la fila 12, cols 13–14, es decir, **subiendo**; pero moverse hacia
-arriba *aumenta* la distancia Manhattan a pacman, así que el greedy nunca lo
+arriba _aumenta_ la distancia Manhattan a pacman, así que el greedy nunca lo
 elige si existe una opción lateral/abajo con menor distancia. Resultado: los
 fantasmas liberados oscilan dentro de la pen y nunca salen al mapa.
 
