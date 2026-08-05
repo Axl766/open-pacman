@@ -62,6 +62,9 @@ function createGame() {
       // alcanza PEN_EXIT. Incluso blinky (released=true) arranca exited=false
       // hasta que termine de salir. Se consume en moveGhost (SPEC 02).
       exited: false,
+      // Flag "es ojos volviendo a la pen" (SPEC 03). true mientras pacman lo
+      // ha comido y los ojos vuelven; moveGhost lo redirige a eyesStep.
+      eaten: false,
     } ) ),
   };
 }
@@ -289,9 +292,47 @@ function exitStep( g ) {
   }
 }
 
+// Rutina guionizada de ojos volviendo a la pen (SPEC 03 Paso 5). Espejo
+// descendente de exitStep: alinea a col 13 y baja por la puerta (value 3)
+// hasta la pen. Los ojos NO pasan por decideGhost, asi que atraviesan la
+// puerta libremente (la regla unidireccional de SPEC 02 solo aplica dentro
+// de decideGhost). Al llegar a (13,14) cede a exitStep para re-salir.
+function eyesStep( g ) {
+  const gx = Math.round( g.x );
+  const gy = Math.round( g.y );
+  if ( gx !== 13 ) {
+    g.dir = g.x < 13 ? 'right' : 'left';
+  } else if ( gy < 14 ) {
+    g.dir = 'down'; // atraviesa la puerta (value 3) — intencional
+  } else {
+    // Llego a la pen: ancla, cede a exitStep, re-emerge corriendo.
+    g.x = 13;
+    g.y = 14;
+    g.eaten = false;
+    g.exited = false;
+    g.dir = 'up';
+    return;
+  }
+}
+
 function moveGhost( game, g ) {
   const grid = game.grid;
   const width = grid[ 0 ].length;
+
+  // Ojos volviendo a la pen (SPEC 03): rutina guionizada que cruza la puerta.
+  // Se ejecuta antes que cualquier otra rama (no usa decideGhost).
+  if ( g.eaten ) {
+    if ( aligned( g.x ) && aligned( g.y ) ) {
+      g.x = Math.round( g.x );
+      g.y = Math.round( g.y );
+      eyesStep( g );
+    }
+    const d = DIRS[ g.dir ] || { x: 0, y: 0 };
+    g.x += d.x * g.speed;
+    g.y += d.y * g.speed;
+    wrapTunnel( g, width );
+    return;
+  }
 
   // Fantasma bloqueado: solo flota en la pen, no decide direccion.
   if ( !g.released ) {
@@ -361,6 +402,17 @@ function update( game ) {
 
   for ( const g of game.ghosts ) {
     if ( collides( game.pacman, g ) ) {
+      // Fantasma asustado y no ojos: pacman se lo come (SPEC 03). Suma puntos
+      // en cadena 200/400/800/1600, sube frightChain (clampeado a 3) y el
+      // fantasma pasa a modo ojos. NO se baja vidas ni se resetea.
+      if ( game.frightTimer > 0 && !g.eaten ) {
+        const idx = Math.min( game.frightChain, 3 );
+        game.score += GHOST_EATEN_SCORE[ idx ];
+        game.frightChain = Math.min( game.frightChain + 1, 3 );
+        g.eaten = true;
+        continue;
+      }
+      // No asustado o el fantasma ya es ojos: pacman muere (lógica original).
       game.lives--;
       if ( game.lives <= 0 ) {
         game.state = 'lost';
