@@ -13,6 +13,12 @@ const OPPOSITE = { left: 'right', right: 'left', up: 'down', down: 'up' };
 const PACMAN_SPEED = 0.125; // 1/8 celda/frame -> alinea cada 8 frames
 const GHOST_SPEED = 0.1;    // 1/10 celda/frame
 
+// Power pellets / modo asustado (SPEC 03).
+const POWER_PELLET_SCORE = 50;
+const GHOST_EATEN_SCORE = [ 200, 400, 800, 1600 ]; // indexado por frightChain
+const FRIGHT_FRAMES = 420;          // ~7s a 60fps; 0 = inactivo
+const FRIGHT_BLINK_FRAMES = 120;    // ultimos ~2s parpadean en render
+
 // Crea una partida nueva. Copia MAZE (pristino) a game.grid para poder comer
 // dots sin destruir el original, y reiniciar.
 function createGame() {
@@ -29,6 +35,11 @@ function createGame() {
     lives: 3,
     dotsRemaining: dots,
     dotsEaten: 0,
+    // Modo asustado global (SPEC 03): frightTimer en frames (0 = inactivo),
+    // frightChain = cuantos fantasmas se han comido en este power pellet
+    // (0..3, indexa GHOST_EATEN_SCORE). Reiniciado por cada power pellet.
+    frightTimer: 0,
+    frightChain: 0,
     grid,
     pacman: {
       x: PACMAN_START.x,
@@ -109,6 +120,16 @@ function movePacman( game ) {
       game.score += 10;
       game.dotsRemaining--;
       game.dotsEaten++;
+    }
+    // Power pellet (SPEC 03): 50 pts, cuenta como dot, arranca modo asustado.
+    // Reinicia timer y cadena (no acumula con un fright previo activo).
+    if ( grid[ p.y ][ p.x ] === 4 ) {
+      grid[ p.y ][ p.x ] = 0;
+      game.score += POWER_PELLET_SCORE;
+      game.dotsRemaining--;
+      game.dotsEaten++;
+      game.frightTimer = FRIGHT_FRAMES;
+      game.frightChain = 0;
     }
     // Si no puede seguir, se detiene en la celda.
     if ( !canMove( grid, p.x, p.y, p.dir, 'pacman' ) ) return;
@@ -296,6 +317,11 @@ function update( game ) {
   for ( const g of game.ghosts ) {
     if ( !g.released && game.dotsEaten >= g.threshold ) g.released = true;
   }
+
+  // Decrementar el timer del modo asustado (SPEC 03). Cuando llega a 0,
+  // los fantasmas NO eaten vuelven a perseguir automaticamente: no hay flag
+  // que limpiar, `frightTimer === 0` es la condicion en decideGhost.
+  if ( game.frightTimer > 0 ) game.frightTimer--;
 
   game.ghosts.forEach( ( g ) => moveGhost( game, g ) );
 
